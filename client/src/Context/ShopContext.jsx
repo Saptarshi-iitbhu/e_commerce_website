@@ -2,9 +2,11 @@ import React, { createContext, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from "react-hot-toast"
 import axios from "axios"
+import Cookies from "js-cookie";
 
 axios.defaults.withCredentials = true
 axios.defaults.baseURL = import.meta.env.VITE_BACKEND_URL
+const token = Cookies.get("token");
 
 export const ShopContext = createContext()
 
@@ -38,7 +40,9 @@ const ShopContextProvider = ({ children }) => {
   // Fetch User
   const fetchUser = async ()=>{
     try {
-      const {data} = await axios.get('/api/user/is-auth')
+      const {data} = await axios.get('/api/user/is-auth',{headers: {
+    Authorization: `Bearer ${token}`, 
+  },})
       if(data.success){
         setUser(data.user)
         setCartItems(data.user.cartData)
