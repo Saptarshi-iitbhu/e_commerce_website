@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs"
 const cookieOptions = {
     httpOnly: false, // prevent client-side javascript from accessing the cookie
     secure: process.env.APP_ENV === "production",// ensure the cookie is only sent over HTTPS in production
-    sameSite: process.env.APP_ENV === "production" ? "none" : "strict" // controls when cookies are sent "none" allows coss-site in production, "strict" block corss-site by default
+    sameSite: false, // allow cross-site cookies
 }
 
 
