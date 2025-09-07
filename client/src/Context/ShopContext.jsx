@@ -4,7 +4,7 @@ import toast from "react-hot-toast"
 import axios from "axios"
 import Cookies from "js-cookie";
 
-axios.defaults.withCredentials = false
+axios.defaults.withCredentials = true
 axios.defaults.baseURL = import.meta.env.VITE_BACKEND_URL
 const token = Cookies.get("token");
 
