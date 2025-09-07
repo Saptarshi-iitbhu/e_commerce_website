@@ -55,86 +55,111 @@ export const placeOrderStripe = async (req, res) => {
         const userId = req.userId
         const { origin } = req.headers
 
-        if (items.length === 0) {
-            return res.json({ success: false, message: "Please add a Product first" })
+        if (!items || items.length === 0) {
+            return res.status(400).json({ success: false, message: "Please add a product first" })
+        }
+        if (!address) {
+            return res.status(400).json({ success: false, message: "Delivery address is required" })
+        }
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized request" })
         }
 
         let productData = []
-        // calculate subtotal using items
-        let subtotal = await items.reduce(async (acc, item) => {
+        let subtotal = 0
+
+        for (const item of items) {
             const product = await productModel.findById(item.product)
+            if (!product) {
+                return res.status(404).json({ success: false, message: `Product not found: ${item.product}` })
+            }
+
             productData.push({
                 name: product.name,
                 price: product.offerPrice,
                 quantity: item.quantity
             })
-            return (await acc) + product.offerPrice * item.quantity
-        }, 0)
 
-        // calculate tax & total
+            subtotal += product.offerPrice * item.quantity
+        }
+
         const taxAmount = subtotal * taxPercentage
         const totalAmount = subtotal + taxAmount + deliveryCharges
 
-        // Save order before payment
-
-        const order = await orderModel.create({
-            userId,
-            items,
-            amount: totalAmount,
-            address,
-            paymentMethod: "stripe",
-        })
+        // Save order as unpaid first
+        let order
+        try {
+            order = await orderModel.create({
+                userId,
+                items,
+                amount: totalAmount,
+                address,
+                paymentMethod: "stripe",
+                isPaid: false
+            })
+        } catch (dbError) {
+            console.error("❌ Failed to create order:", dbError)
+            return res.status(500).json({ success: false, message: "Error creating order" })
+        }
 
         const stripeInstance = new stripe(process.env.STRIPE_SECRET_KEY)
 
-        //Create line items for stripe
-        let line_items = productData.map((item) => {
-            return {
-                price_data: {
-                    currency: currency,
-                    product_data: { name: item.name },
-                    unit_amount: Math.floor(item.price * 100 * 277) // pure price (without tax) into pkr
-                },
-                quantity: 1
-            }
-        })
+        let line_items = productData.map((item) => ({
+            price_data: {
+                currency,
+                product_data: { name: item.name },
+                unit_amount: Math.floor(item.price * 100 * 277)
+            },
+            quantity: item.quantity
+        }))
 
-        //Add tax as seperate line item
         line_items.push({
             price_data: {
-                currency: currency,
+                currency,
                 product_data: { name: "Tax (2%)" },
-                unit_amount: Math.floor(taxAmount * 100 * 277) // into pkr
+                unit_amount: Math.floor(taxAmount * 100 * 277)
             },
             quantity: 1
         })
 
-        // Add delivery charges
         line_items.push({
             price_data: {
-                currency: currency,
+                currency,
                 product_data: { name: "Delivery Charges" },
-                unit_amount: Math.floor(deliveryCharges * 100 * 277) // into pkr
+                unit_amount: Math.floor(deliveryCharges * 100 * 277)
             },
             quantity: 1
         })
 
-        const session = await stripeInstance.checkout.sessions.create({
-            line_items,
-            mode: "payment",
-            success_url: `${origin}/loader?next=my-orders`,
-            cancel_url: `${origin}/cart`,
-            metadata: {
-                orderId: order._id.toString(),
-                userId,
-            }
-        })
+        let session
+        try {
+            session = await stripeInstance.checkout.sessions.create({
+                line_items,
+                mode: "payment",
+                success_url: `${origin}/loader?next=my-orders`,
+                cancel_url: `${origin}/cart`,
+                metadata: {
+                    orderId: order._id.toString(),
+                    userId,
+                }
+            })
+        } catch (stripeError) {
+            console.error("❌ Stripe session creation failed:", stripeError)
+            return res.status(500).json({ success: false, message: "Stripe session creation failed" })
+        }
 
+        try {
+            await userModel.findByIdAndUpdate(userId, { cartData: {} })
+        } catch (cartError) {
+            console.warn("⚠️ Failed to clear cart for user:", userId, cartError)
+        }
+
+        console.log("✅ Checkout URL created:", session.url)
         return res.json({ success: true, url: session.url })
 
     } catch (error) {
-        console.log(error)
-        res.json({ success: false, message: error.message })
+        console.error("❌ Unexpected error in placeOrderStripe:", error)
+        return res.status(500).json({ success: false, message: "Something went wrong, please try again later" })
     }
 }
 
@@ -150,13 +175,16 @@ export const stripeWebhooks = async (req, res) => {
             signature,
             process.env.STRIPE_WEBHOOK_SECRET
         );
+        console.log("stripe secret veifried")
+        console.log(event)
     } catch (err) {
-        console.error("Webhook signature verification failed:", err.message);
+        console.log("Webhook signature verification failed:", err.message);
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
+    console.log("checking event", event.type)
     switch (event.type) {
-        case "checkout.session.completed": {
+        case "payment_intent.succeeded": {
             const session = event.data.object;
             console.log(session.metadata);
             const { orderId, userId } = session.metadata;

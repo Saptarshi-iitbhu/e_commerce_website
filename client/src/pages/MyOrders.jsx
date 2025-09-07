@@ -15,6 +15,7 @@ const MyOrders = () => {
     try {
       const {data} = await axios.post("/api/order/userorders")
       if(data.success){
+        console.log(data)
         setOrders(data.orders)
       }
     } catch (error) {

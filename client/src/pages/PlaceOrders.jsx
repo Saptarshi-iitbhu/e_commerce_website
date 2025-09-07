@@ -70,7 +70,10 @@ const PlaceOrders = () => {
       }else{
         const {data} = await axios.post("/api/order/stripe", {items, address: formData})
         if(data.success){
+          // setCartItems({})
           window.location.replace(data.url)
+          // navigate('/my-orders')
+
         }else{
           toast.error(data.message)
         }

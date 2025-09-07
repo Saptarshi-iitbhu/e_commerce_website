@@ -11,6 +11,7 @@ const Cart = () => {
   const [cartData, setCartData] = useState([])
 
   useEffect(()=>{
+    console.log(cartItems)
     if(products.length > 0){
       const tempData =[]
       for(const itemId in cartItems){
