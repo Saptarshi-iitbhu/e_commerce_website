@@ -6,7 +6,6 @@ import Cookies from "js-cookie";
 
 axios.defaults.withCredentials = true
 axios.defaults.baseURL = import.meta.env.VITE_BACKEND_URL
-const token = Cookies.get("token");
 
 export const ShopContext = createContext()
 
@@ -40,9 +39,7 @@ const ShopContextProvider = ({ children }) => {
   // Fetch User
   const fetchUser = async ()=>{
     try {
-      const {data} = await axios.get('/api/user/is-auth',{headers: {
-    Authorization: `Bearer ${token}`, 
-  },})
+      const {data} = await axios.get('/api/user/is-auth')
       if(data.success){
         setUser(data.user)
         setCartItems(data.user.cartData)
